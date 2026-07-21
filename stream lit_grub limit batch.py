@@ -4,13 +4,24 @@ import numpy as np
 import pandas as pd
 import streamlit as st
 
-# Page setup
-st.set_page_config(page_title="Serological QC Data Analyzer", page_icon="🧪", layout="wide")
+# -----------------------------------------------------------------------------
+# PAGE CONFIGURATION
+# -----------------------------------------------------------------------------
+st.set_page_config(
+    page_title="Serological QC Data Analyzer",
+    page_icon="🧪",
+    layout="wide"
+)
 
 st.title("🧪 Serological QC Data Analyzer")
-st.write("Upload your QC data files (Excel or CSV) to calculate summary statistics, evaluate Grubbs limits, and export formatted reports.")
+st.write(
+    "Upload your QC data files (Excel or CSV) to calculate summary statistics, "
+    "evaluate Grubbs limits, and export formatted reports."
+)
 
-# 1. Upload multiple files via Web Interface
+# -----------------------------------------------------------------------------
+# FILE UPLOAD
+# -----------------------------------------------------------------------------
 uploaded_files = st.file_uploader(
     "Please select and upload your QC data file(s):",
     type=["csv", "xlsx", "xls"],
@@ -18,43 +29,49 @@ uploaded_files = st.file_uploader(
 )
 
 if uploaded_files:
-    # 2. Loop through every uploaded file
     for uploaded_file in uploaded_files:
         filename = uploaded_file.name
         
         st.divider()
         st.subheader(f"📄 Processing File: `{filename}`")
         
-        # Read the data based on file type
+        # Read the file based on extension
         try:
             if filename.endswith(".xlsx") or filename.endswith(".xls"):
-                df_input = pd.read_excel(uploaded_file)
+                # Requires openpyxl engine
+                df_input = pd.read_excel(uploaded_file, engine="openpyxl")
             else:
                 df_input = pd.read_csv(uploaded_file)
         except Exception as e:
-            st.error(f"Error reading {filename}: {e}. Skipping file.")
+            st.error(f"Error reading `{filename}`: {e}. Skipping file.")
             continue
 
-        # 3. Identify columns (First column is Day, next 5 are Replicates)
+        # ---------------------------------------------------------------------
+        # 1. IDENTIFY COLUMNS & EXTRACT DATA
+        # ---------------------------------------------------------------------
         day_col = df_input.columns[0]
         replicate_cols = df_input.columns[1:6]
 
-        # Flatten all data points for overall statistical calculations
+        # Flatten all 25 replicate data points for overall statistical calculations
         all_values = df_input[replicate_cols].values.flatten()
 
-        # 4. Perform Statistical Calculations
+        # ---------------------------------------------------------------------
+        # 2. PERFORM STATISTICAL CALCULATIONS
+        # ---------------------------------------------------------------------
         total_sum = np.sum(all_values)
         mean_val = np.mean(all_values)  # Average
         sd_val = np.std(all_values, ddof=1)  # Sample standard deviation
-        cv_percentage = (sd_val / mean_val) * 100 if mean_val != 0 else 0
+        cv_percentage = (sd_val / mean_val) * 100 if mean_val != 0 else 0.0
 
         # Grubbs Limits based on formula: mean +/- (3.135 * sd)
         upper_limit = mean_val + (3.135 * sd_val)
         lower_limit = mean_val - (3.135 * sd_val)
 
-        # 5. Evaluate Individual Cells (Replicates) and check for any failures
+        # ---------------------------------------------------------------------
+        # 3. EVALUATE INDIVIDUAL CELLS & CHECK FOR FAILURES
+        # ---------------------------------------------------------------------
         df_result = df_input.copy()
-        any_failed = False  # Track if any single data point fails
+        any_failed = False  # Tracks if any single data point fails
         
         for row_idx in range(len(df_input)):
             for col in replicate_cols:
@@ -65,62 +82,100 @@ if uploaded_files:
                     status = "PASS"
                 else:
                     status = "FAIL"
-                    any_failed = True  # At least one data point exceeded limits
+                    any_failed = True
                 
-                # Format display string
+                # Format cell text display
                 df_result.at[row_idx, col] = f"{val} [{status}]"
 
-        # 6. Strict Overall Status Check
+        # Overall QC Status
         overall_status = "FAIL!" if any_failed else "PASS"
 
-        # Display Summary Cards / Metrics in Streamlit
-        col1, col2, col3, col4 = st.columns(4)
-        col1.metric("Total Sum", f"{total_sum:.4f}")
-        col2.metric("Overall Mean", f"{mean_val:.4f}")
-        col3.metric("Std Deviation", f"{sd_val:.4f}")
-        col4.metric("CV (%)", f"{cv_percentage:.2f}%")
+        # ---------------------------------------------------------------------
+        # 4. DISPLAY SUMMARY METRICS & STATUS
+        # ---------------------------------------------------------------------
+        m_col1, m_col2, m_col3, m_col4 = st.columns(4)
+        m_col1.metric("Total Sum", f"{total_sum:.4f}")
+        m_col2.metric("Overall Mean", f"{mean_val:.4f}")
+        m_col3.metric("Std Deviation", f"{sd_val:.4f}")
+        m_col4.metric("CV (%)", f"{cv_percentage:.2f}%")
 
-        col_l1, col_l2, col_status = st.columns([1, 1, 1])
-        col_l1.metric("Grubbs Lower Limit", f"{lower_limit:.4f}")
-        col_l2.metric("Grubbs Upper Limit", f"{upper_limit:.4f}")
+        l_col1, l_col2, status_col = st.columns([1, 1, 1])
+        l_col1.metric("Grubbs Lower Limit", f"{lower_limit:.4f}")
+        l_col2.metric("Grubbs Upper Limit", f"{upper_limit:.4f}")
 
-        # Display overall status banner
         if overall_status == "FAIL!":
-            col_status.error(f"OVERALL STATUS: {overall_status}")
+            status_col.error(f"OVERALL QC STATUS: {overall_status}")
             st.warning("⚠️ Notice: One or more raw data points exceeded the Grubbs limits.")
         else:
-            col_status.success(f"OVERALL STATUS: {overall_status}")
-            st.success("✅ Success: All raw data points are within limits.")
+            status_col.success(f"OVERALL QC STATUS: {overall_status}")
+            st.success("✅ Success: All 25 raw data points are perfectly within limits.")
 
-        # Display Result Table on web page
-        st.write("### QC Evaluation Table")
-        st.dataframe(df_result, use_container_width=True)
+        # ---------------------------------------------------------------------
+        # 5. HIGHLIGHT & DISPLAY RESULT TABLE
+        # ---------------------------------------------------------------------
+        st.write("### QC Evaluation Results Table")
 
-        # 7. Create Excel Export File in Memory
+        # Function to highlight [FAIL] cells in soft red
+        def highlight_failures(val):
+            if isinstance(val, str) and "[FAIL]" in val:
+                return "background-color: #ffcdd2; color: #b71c1c; font-weight: bold;"
+            elif isinstance(val, str) and "[PASS]" in val:
+                return "background-color: #c8e6c9; color: #1b5e20;"
+            return ""
+
+        styled_df = df_result.style.applymap(
+            highlight_failures, 
+            subset=replicate_cols
+        )
+        
+        st.dataframe(styled_df, use_container_width=True)
+
+        # ---------------------------------------------------------------------
+        # 6. CREATE EXCEL EXPORT (IN-MEMORY BUFFER)
+        # ---------------------------------------------------------------------
         summary_data = {
-            "Metric": ["Total Sum", "Overall Mean", "Standard Deviation", "CV (%)", "Grubbs Upper Limit", "Grubbs Lower Limit", "Overall QC Status"],
-            "Value": [total_sum, mean_val, sd_val, f"{cv_percentage:.2f}%", upper_limit, lower_limit, overall_status]
+            "Metric": [
+                "Total Sum", 
+                "Overall Mean", 
+                "Standard Deviation", 
+                "CV (%)", 
+                "Grubbs Upper Limit", 
+                "Grubbs Lower Limit", 
+                "Overall QC Status"
+            ],
+            "Value": [
+                total_sum, 
+                mean_val, 
+                sd_val, 
+                f"{cv_percentage:.2f}%", 
+                upper_limit, 
+                lower_limit, 
+                overall_status
+            ]
         }
         df_summary = pd.DataFrame(summary_data)
 
-        # Write multi-sheet Excel into an in-memory buffer
+        # Build Excel file into BytesIO buffer
         output_buffer = io.BytesIO()
-        with pd.ExcelWriter(output_buffer, engine="openpyxl") as writer:
-            df_result.to_excel(writer, sheet_name="Replicate Results", index=False)
-            df_summary.to_excel(writer, sheet_name="Overall Summary", index=False)
-        output_buffer.seek(0)
+        try:
+            with pd.ExcelWriter(output_buffer, engine="openpyxl") as writer:
+                df_result.to_excel(writer, sheet_name="Replicate Results", index=False)
+                df_summary.to_excel(writer, sheet_name="Overall Summary", index=False)
+            output_buffer.seek(0)
 
-        # File naming
-        base_name, _ = os.path.splitext(filename)
-        output_filename = f"{base_name}_Grubbs_Results.xlsx"
+            # Generate dynamic filename
+            base_name, _ = os.path.splitext(filename)
+            output_filename = f"{base_name}_Grubbs_Results.xlsx"
 
-        # Streamlit Download Button
-        st.download_button(
-            label=f"📥 Download {output_filename}",
-            data=output_buffer,
-            file_name=output_filename,
-            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-            key=filename  # Unique key for each file loop
-        )
+            # Download Button
+            st.download_button(
+                label=f"📥 Download Processed Excel ({output_filename})",
+                data=output_buffer,
+                file_name=output_filename,
+                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                key=filename
+            )
+        except Exception as e:
+            st.error(f"Failed to generate Excel file for download: {e}")
 
-    st.toast("All files processed successfully!", icon="🎉")
+    st.toast("Processing complete for all files!", icon="🎉")
