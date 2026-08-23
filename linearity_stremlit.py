@@ -181,7 +181,7 @@ if uploaded_file is not None:
                 [
                     prop_col,
                     "Measured Mean",
-                    "SD",,
+                    "SD",
                     "% CV",
                     "Sigma Value",
                     "Weight",
@@ -249,7 +249,7 @@ if uploaded_file is not None:
             df_sorted["Deviation from Linearity"],
             marker="o",
             color="black",
-            label="Deviation",,
+            label="Deviation",
             linewidth=2,
         )
         axes[1].plot(
