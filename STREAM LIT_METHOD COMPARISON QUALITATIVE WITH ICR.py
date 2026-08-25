@@ -67,6 +67,16 @@ if total_neg_criteria > 0:
 else:
     spec_q2, spec_q3, spec_upper, spec_lower = 0.0, 0.0, 0.0, 0.0
 
+# --- 95% CONFIDENCE INTERVAL FOR ACCURACY ---
+acc_q1 = round(2 * (tp + tn) + z_sq, 2)
+if n_total > 0:
+    acc_q2 = round(1.96 * math.sqrt(z_sq + ((4 * (tp + tn) * (fp + fn)) / n_total)), 2)
+    acc_q3 = round(2 * (n_total + z_sq), 2)
+    acc_upper = round(((acc_q1 + acc_q2) / acc_q3) * 100, 2)
+    acc_lower = round(((acc_q1 - acc_q2) / acc_q3) * 100, 2)
+else:
+    acc_q2, acc_q3, acc_upper, acc_lower = 0.0, 0.0, 0.0, 0.0
+
 # -----------------------------------------------------------------------------
 # 3. DISPLAY SUMMARY METRICS & CONTINGENCY TABLE
 # -----------------------------------------------------------------------------
@@ -97,7 +107,8 @@ with col_right:
     interval_data = {
         "Parameter": ["Q1", "Q2", "Q3", "Upper Limit (%)", "Lower Limit (%)"],
         "Sensitivity CI": [sens_q1, sens_q2, sens_q3, sens_upper, sens_lower],
-        "Specificity CI": [spec_q1, spec_q2, spec_q3, spec_upper, spec_lower]
+        "Specificity CI": [spec_q1, spec_q2, spec_q3, spec_upper, spec_lower],
+        "Accuracy CI": [acc_q1, acc_q2, acc_q3, acc_upper, acc_lower]
     }
     df_intervals = pd.DataFrame(interval_data)
     st.dataframe(df_intervals, use_container_width=True)
@@ -112,7 +123,7 @@ metrics_data = {
         f"{spec_lower:.2f}% – {spec_upper:.2f}%",
         "N/A",
         "N/A",
-        "N/A"
+        f"{acc_lower:.2f}% – {acc_upper:.2f}%"
     ]
 }
 df_metrics = pd.DataFrame(metrics_data)
@@ -129,7 +140,7 @@ try:
         df_matrix.to_excel(writer, sheet_name='Contingency Table', index=False)
         df_metrics.to_excel(writer, sheet_name='Accuracy Metrics', index=False)
         df_intervals.to_excel(writer, sheet_name='Confidence Intervals', index=False)
-    
+        
     output_buffer.seek(0)
 
     st.download_button(
